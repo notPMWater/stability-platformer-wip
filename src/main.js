@@ -365,6 +365,8 @@ window.addEventListener('load', function () {
 
             respawnPlayer();
         });
+
+        respawnPlayer();
     }
 
     // ---------------------------------------------------------
