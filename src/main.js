@@ -1,3 +1,4 @@
+// game.js
 window.addEventListener('load', function () {
     const config = {
         type: Phaser.AUTO,
@@ -223,7 +224,7 @@ window.addEventListener('load', function () {
         // ---------------- ENEMY SPAWN ----------------
         const enemyPlatformIndices = [];
 
-        spikePositions.forEach(() => {});
+        spikePositions.forEach(() => { });
 
         for (let p = 0; p < platforms.length; p++) {
             const plat = platforms[p];
@@ -332,29 +333,62 @@ window.addEventListener('load', function () {
 
         // ---------------------------------------------------------
         // CANVAS RESET BUTTON (ROUNDED RECTANGLE)
+        //
+        // Replaced the previous graphics-in-container approach with
+        // a proper interactive rectangle and separate text so both
+        // the rectangle and the text respond reliably to clicks.
         // ---------------------------------------------------------
 
-        const btnGroup = this.add.container(0, 0).setScrollFactor(0);
+        const btnX = 20;
+        const btnY = 20;
+        const btnW = 260;
+        const btnH = 70;
+        const btnRadius = 20;
 
+        // background rounded rectangle (visual) - use graphics but not for interaction
         const btnBg = this.add.graphics();
-        btnBg.fillStyle(0x222222, 0.85);
-        btnBg.fillRoundedRect(20, 20, 260, 70, 20);
-        btnBg.lineStyle(4, 0xffffff, 1);
-        btnBg.strokeRoundedRect(20, 20, 260, 70, 20);
+        btnBg.fillStyle(0x222222, 0.95);
+        btnBg.fillRoundedRect(btnX, btnY, btnW, btnH, btnRadius);
+        btnBg.lineStyle(3, 0xffffff, 1);
+        btnBg.strokeRoundedRect(btnX, btnY, btnW, btnH, btnRadius);
+        btnBg.setScrollFactor(0);
+        btnBg.setDepth(2000);
 
-        const btnText = this.add.text(150, 55, "RESET CHECKPOINTS", {
-            fontSize: "24px",
+        // interactive rectangle (invisible) that exactly matches the button area
+        const btnHit = this.add.rectangle(btnX, btnY, btnW, btnH, 0x000000, 0)
+            .setOrigin(0)
+            .setInteractive({ useHandCursor: true })
+            .setScrollFactor(0)
+            .setDepth(2001);
+
+        // label text
+        const btnText = this.add.text(btnX + btnW / 2, btnY + btnH / 2, "RESET CHECKPOINTS", {
+            fontSize: "20px",
             fontFamily: "Arial",
-            color: "#ffffff"
-        }).setOrigin(0.5);
+            color: "#ffffff",
+            align: "center",
+            wordWrap: { width: btnW - 20 }
+        })
+            .setOrigin(0.5)
+            .setScrollFactor(0)
+            .setDepth(2002);
 
-        btnGroup.add(btnBg);
-        btnGroup.add(btnText);
+        // pointer feedback - press visual
+        btnHit.on('pointerdown', () => {
+            btnBg.clear();
+            btnBg.fillStyle(0x1a1a1a, 0.95);
+            btnBg.fillRoundedRect(btnX, btnY, btnW, btnH, btnRadius);
+            btnBg.lineStyle(3, 0xffffff, 1);
+            btnBg.strokeRoundedRect(btnX, btnY, btnW, btnH, btnRadius);
+        });
+        btnHit.on('pointerup', () => {
+            btnBg.clear();
+            btnBg.fillStyle(0x222222, 0.95);
+            btnBg.fillRoundedRect(btnX, btnY, btnW, btnH, btnRadius);
+            btnBg.lineStyle(3, 0xffffff, 1);
+            btnBg.strokeRoundedRect(btnX, btnY, btnW, btnH, btnRadius);
 
-        btnGroup.setSize(260, 70);
-        btnGroup.setInteractive(new Phaser.Geom.Rectangle(20, 20, 260, 70), Phaser.Geom.Rectangle.Contains);
-
-        btnGroup.on("pointerdown", () => {
+            // Reset logic
             checkpoints.forEach(cp => {
                 cp.reached = false;
                 cp.setTexture("checkpoint_white");
@@ -363,16 +397,28 @@ window.addEventListener('load', function () {
             lastCheckpoint = null;
             localStorage.removeItem("lastCheckpoint");
 
+            // kill + respawn at start
             respawnPlayer();
         });
 
-        respawnPlayer();
+        // assure clicks on the text also count (some browsers deliver pointer to topmost object)
+        btnText.setInteractive({ useHandCursor: true }).on('pointerdown', () => {
+            btnHit.emit('pointerdown');
+        }).on('pointerup', () => {
+            btnHit.emit('pointerup');
+        });
+
+        // ---------------------------------------------------------
+        // Ensure player spawns at saved checkpoint immediately on start
+        // ---------------------------------------------------------
+        // call respawnPlayer after a tiny delay to allow physics bodies to initialize
+        // (this is short and deterministic; prevents starting at default and then teleporting)
+        this.time.delayedCall(50, respawnPlayer, [], this);
     }
 
     // ---------------------------------------------------------
     // HELPER FUNCTIONS
     // ---------------------------------------------------------
-
     function enemyBlockedAhead(enemy) {
         const dir = enemy.direction;
         const px = enemy.x + dir * (ENEMY_SIZE / 2 + 6);
@@ -432,6 +478,7 @@ window.addEventListener('load', function () {
             }
         }
 
+        // require the player to overlap the sight line vertically (same row)
         return Math.abs(enemy.y - player.y) < ENEMY_SIZE;
     }
 
@@ -460,19 +507,30 @@ window.addEventListener('load', function () {
 
         if (lastCheckpoint) {
             x = lastCheckpoint.x;
-            y = lastCheckpoint.y - CHECKPOINT_SIZE / 2;
+            // place player slightly above checkpoint square (so they don't overlap the checkpoint texture)
+            y = lastCheckpoint.y - CHECKPOINT_SIZE / 2 - (ENEMY_SIZE / 2) - 2;
         }
 
-        player.disableBody(true, true);
+        // disable then re-enable player body so collisions are reset
+        if (player && player.body) {
+            player.disableBody(true, true);
+        }
 
+        // short delay to let physics/objects settle (keeps behavior stable across browsers)
         setTimeout(() => {
-            player.enableBody(true, x, y, true, true);
+            if (player) {
+                player.enableBody(true, x, y, true, true);
+                // reset state
+                player.setVelocity(0, 0);
+                player.isFastFalling = false;
+            }
             respawnEnemies();
-        }, 250);
+        }, 100);
     }
 
     function respawnEnemies() {
         for (const enemy of enemies) {
+            // return alive enemies to their spawn
             enemy.setPosition(enemy.spawnX, enemy.spawnY);
             if (!enemy.active) enemy.enableBody(true, enemy.spawnX, enemy.spawnY, true, true);
 
@@ -487,6 +545,8 @@ window.addEventListener('load', function () {
     // ---------------------------------------------------------
     function update() {
         // movement
+        if (!player || !player.body) return;
+
         player.setVelocityX(0);
 
         if (cursors.left.isDown || wasd.A.isDown)
