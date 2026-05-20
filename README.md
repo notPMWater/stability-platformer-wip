@@ -16,4 +16,10 @@ This is an unfinished game. I will be adding:
 - WAY wilder combat mechanics!
 - A crap ton of animations.
 
+UPDATE 1.2.1:
+- Better enemy patrol mechanics
+- Graphics and physics now look much cooler
+- Enemies and players now explode upon death
+- Several bug fixes
+
 Please playtest the game and notify me of bugs and anything you would like me to add!
